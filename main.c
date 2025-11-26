@@ -116,7 +116,7 @@ int main(int argc, char **argv) {
     int num_rows, num_cols;
 
     if (fscanf(f_tiles, "%d", &num_tiles) != 1) return 1;
-    if (fscanf(f_board, "%d %d", &num_rows, &num_cols) != 1) return 1;
+    if (fscanf(f_board, "%d %d", &num_rows, &num_cols) != 2) return 1;
 
     Tile *tile_inventory = malloc(sizeof(Tile) * num_tiles);
     BoardCell *board = malloc(sizeof(BoardCell) * num_rows * num_cols);
@@ -151,7 +151,6 @@ int main(int argc, char **argv) {
 
     fclose(f_tiles);
     fclose(f_board);
-
     solve_backtracking(0, board, tile_inventory, num_cols, num_rows, num_tiles);
 
     printf("Max Score: %d\n", max_score);
@@ -171,3 +170,4 @@ int main(int argc, char **argv) {
 
     return 0;
 }
+
