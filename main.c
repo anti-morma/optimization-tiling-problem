@@ -1,34 +1,37 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-typedef struct tiles {
-    int VVal;
-    int OVal;
-    int used;
-    char VColor;
-    char OColor;
-} tiles;
+typedef struct {
+    int v_val;      // Vertical Value
+    int h_val;      // Horizontal Value
+    int is_used;    // Flag to mark if tile is used
+    char v_color;   // Vertical Color
+    char h_color;   // Horizontal Color
+} Tile;
 
-typedef struct board_cell {
-    tiles * tp;
-    int rotation;
-    int fixed;
-} board_cell;
+typedef struct {
+    Tile *tile_ptr; // Pointer to the actual tile in inventory
+    int rotation;   // 0: Horizontal, 1: Vertical
+    int is_fixed;   // 1 if the cell was pre-filled by input
+} BoardCell;
 
 int max_score = -1;
-board_cell *best_board = NULL;
+BoardCell *best_board = NULL;
 
-int calc_score(board_cell *b, int C, int R) {
+int calculate_score(BoardCell *board, int cols, int rows) {
     int score = 0;
-    for (int r = 0; r < R; r++) {
+
+    // Check rows
+    for (int r = 0; r < rows; r++) {
         int row_score = 0;
         int same_color = 1;
-        char first_c = !b[r*C].rotation ? b[r*C].tp->OColor : b[r*C].tp->VColor;
+        // Determine color of the first cell in the row
+        char first_c = !board[r * cols].rotation ? board[r * cols].tile_ptr->h_color : board[r * cols].tile_ptr->v_color;
 
-        for (int c = 0; c < C; c++) {
-            board_cell *curr = &b[r*C + c];
-            char c_curr = !curr->rotation ? curr->tp->OColor : curr->tp->VColor;
-            int v_curr = !curr->rotation ? curr->tp->OVal : curr->tp->VVal;
+        for (int c = 0; c < cols; c++) {
+            BoardCell *curr = &board[r * cols + c];
+            char c_curr = !curr->rotation ? curr->tile_ptr->h_color : curr->tile_ptr->v_color;
+            int v_curr = !curr->rotation ? curr->tile_ptr->h_val : curr->tile_ptr->v_val;
 
             if (c_curr != first_c) same_color = 0;
             row_score += v_curr;
@@ -36,15 +39,17 @@ int calc_score(board_cell *b, int C, int R) {
         if (same_color) score += row_score;
     }
 
-    for (int c = 0; c < C; c++) {
+    // Check columns
+    for (int c = 0; c < cols; c++) {
         int col_score = 0;
         int same_color = 1;
-        char first_c = (b[c].rotation == 0) ? b[c].tp->VColor : b[c].tp->OColor;
+        // Determine color of the first cell in the column
+        char first_c = (board[c].rotation == 0) ? board[c].tile_ptr->v_color : board[c].tile_ptr->h_color;
 
-        for (int r = 0; r < R; r++) {
-            board_cell *curr = &b[r*C + c];
-            char c_curr = (curr->rotation == 0) ? curr->tp->VColor : curr->tp->OColor;
-            int v_curr = (curr->rotation == 0) ? curr->tp->VVal : curr->tp->OVal;
+        for (int r = 0; r < rows; r++) {
+            BoardCell *curr = &board[r * cols + c];
+            char c_curr = (curr->rotation == 0) ? curr->tile_ptr->v_color : curr->tile_ptr->h_color;
+            int v_curr = (curr->rotation == 0) ? curr->tile_ptr->v_val : curr->tile_ptr->h_val;
 
             if (c_curr != first_c) same_color = 0;
             col_score += v_curr;
@@ -54,109 +59,113 @@ int calc_score(board_cell *b, int C, int R) {
     return score;
 }
 
-void sol(int pos, board_cell *board, tiles *tiles_vec, int num_C, int num_R, int num_T) {
-    if (pos == num_C * num_R) {
-        int current_score = calc_score(board, num_C, num_R);
+void solve_backtracking(int pos, BoardCell *board, Tile *tile_inventory, int num_cols, int num_rows, int num_tiles) {
+    // Base case: Board is full
+    if (pos == num_cols * num_rows) {
+        int current_score = calculate_score(board, num_cols, num_rows);
         if (current_score > max_score) {
             max_score = current_score;
-            for (int i = 0; i < num_C * num_R; i++)
+            for (int i = 0; i < num_cols * num_rows; i++)
                 best_board[i] = board[i];
-            
         }
         return;
     }
 
-    if (board[pos].fixed) {
-        sol(pos + 1, board, tiles_vec, num_C, num_R, num_T);
+    // Skip fixed cells
+    if (board[pos].is_fixed) {
+        solve_backtracking(pos + 1, board, tile_inventory, num_cols, num_rows, num_tiles);
         return;
     }
 
-    for (int i = 0; i < num_T; i++) {
-        if (!tiles_vec[i].used) {
-            board[pos].tp = &tiles_vec[i];
-            tiles_vec[i].used = 1;
+    // Try all available tiles
+    for (int i = 0; i < num_tiles; i++) {
+        if (!tile_inventory[i].is_used) {
+            board[pos].tile_ptr = &tile_inventory[i];
+            tile_inventory[i].is_used = 1;
 
-            // Try no rotation
+            // Option 1: No rotation
             board[pos].rotation = 0;
-            sol(pos + 1, board, tiles_vec, num_C, num_R, num_T);
+            solve_backtracking(pos + 1, board, tile_inventory, num_cols, num_rows, num_tiles);
 
-            // Try the rotation
+            // Option 2: Rotated
             board[pos].rotation = 1;
-            sol(pos + 1, board, tiles_vec, num_C, num_R, num_T);
+            solve_backtracking(pos + 1, board, tile_inventory, num_cols, num_rows, num_tiles);
 
-            // Backtracking
-            board[pos].tp = NULL;
-            tiles_vec[i].used = 0;
+            // Backtrack: Reset state
+            board[pos].tile_ptr = NULL;
+            tile_inventory[i].is_used = 0;
         }
     }
 }
 
 int main(int argc, char **argv) {
     if (argc != 3) {
-        printf("Wrong number of arguments!\n");
+        fprintf(stderr, "Usage: %s <tiles_file> <board_file>\n", argv[0]);
         return 1;
     }
 
-    FILE *fp0 = fopen(argv[1], "r");
-    FILE *fp1 = fopen(argv[2], "r");
-    if (fp0 == NULL || fp1 == NULL) {
-        perror("Error opening file");
-        return 1;
-    }
-
-    int num_T = 0;
-    int num_R, num_C;
-
-    fscanf(fp0, "%d", &num_T);
-    fscanf(fp1, "%d %d", &num_R, &num_C);
-
-    tiles *tiles_vec = malloc(sizeof(tiles) * num_T);
-    board_cell *board = malloc(sizeof(board_cell) * num_R * num_C);
+    FILE *f_tiles = fopen(argv[1], "r");
+    FILE *f_board = fopen(argv[2], "r");
     
-    best_board = malloc(sizeof(board_cell) * num_R * num_C); 
-
-    if (tiles_vec == NULL || board == NULL || best_board == NULL) {
-        perror("Allocation error");
+    if (!f_tiles || !f_board) {
+        perror("Error opening input files");
         return 1;
     }
 
-    for (int i = 0; i < num_T; i++) {
-        fscanf(fp0, " %c %d %c %d", &tiles_vec[i].OColor, &tiles_vec[i].OVal, &tiles_vec[i].VColor, &tiles_vec[i].VVal);
-        tiles_vec[i].used = 0;
+    int num_tiles = 0;
+    int num_rows, num_cols;
+
+    if (fscanf(f_tiles, "%d", &num_tiles) != 1) return 1;
+    if (fscanf(f_board, "%d %d", &num_rows, &num_cols) != 1) return 1;
+
+    Tile *tile_inventory = malloc(sizeof(Tile) * num_tiles);
+    BoardCell *board = malloc(sizeof(BoardCell) * num_rows * num_cols);
+    best_board = malloc(sizeof(BoardCell) * num_rows * num_cols);
+
+    if (!tile_inventory || !board || !best_board) {
+        perror("Memory allocation failed");
+        return 1;
     }
 
-    for (int i = 0; i < num_C * num_R; i++) {
+    for (int i = 0; i < num_tiles; i++) {
+        fscanf(f_tiles, " %c %d %c %d", 
+               &tile_inventory[i].h_color, &tile_inventory[i].h_val, 
+               &tile_inventory[i].v_color, &tile_inventory[i].v_val);
+        tile_inventory[i].is_used = 0;
+    }
+
+    for (int i = 0; i < num_cols * num_rows; i++) {
         int t_index, rot;
-        fscanf(fp1, "%d/%d", &t_index, &rot);
+        fscanf(f_board, "%d/%d", &t_index, &rot);
         if (t_index == -1) {
-            board[i].tp = NULL;
+            board[i].tile_ptr = NULL;
             board[i].rotation = 0;
-            board[i].fixed = 0;
+            board[i].is_fixed = 0;
         } else {
-            board[i].tp = &tiles_vec[t_index];
+            board[i].tile_ptr = &tile_inventory[t_index];
             board[i].rotation = rot;
-            board[i].fixed = 1;
-            tiles_vec[t_index].used = 1;
+            board[i].is_fixed = 1;
+            tile_inventory[t_index].is_used = 1;
         }
     }
 
-    fclose(fp0);
-    fclose(fp1);
+    fclose(f_tiles);
+    fclose(f_board);
 
-    sol(0, board, tiles_vec, num_C, num_R, num_T);
+    solve_backtracking(0, board, tile_inventory, num_cols, num_rows, num_tiles);
 
-    printf("Punteggio massimo: %d\n", max_score);
-    printf("Scacchiera finale:\n");
-    for (int r = 0; r < num_R; r++) {
-        for (int c = 0; c < num_C; c++) {
-            int idx = (int)(best_board[r * num_C + c].tp - tiles_vec);
-            int rot = best_board[r * num_C + c].rotation;
+    printf("Max Score: %d\n", max_score);
+    printf("Final Board Configuration:\n");
+    for (int r = 0; r < num_rows; r++) {
+        for (int c = 0; c < num_cols; c++) {
+            int idx = (int)(best_board[r * num_cols + c].tile_ptr - tile_inventory);
+            int rot = best_board[r * num_cols + c].rotation;
             printf("%d/%d ", idx, rot);
         }
         printf("\n");
     }
 
-    free(tiles_vec);
+    free(tile_inventory);
     free(board);
     free(best_board);
 
